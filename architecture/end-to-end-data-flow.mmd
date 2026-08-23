@@ -1,0 +1,106 @@
+flowchart TD
+
+    A["Product / Signup Event"]
+
+    B{"Authenticated?"}
+    C["Reject Request"]
+
+    D{"Valid Schema?"}
+    E["Reject / Record Validation Failure"]
+
+    F["Normalize Payload"]
+
+    G{"event_id already exists?"}
+    H["Safe Duplicate No-Op"]
+
+    I["Persist Event in PostgreSQL"]
+
+    J["Resolve Product User<br/>to HubSpot Contact"]
+
+    K["Resolve Workspace<br/>to HubSpot Company"]
+
+    L{"Identity trusted?"}
+    M["Needs Review"]
+
+    N["Verify Contact–Company Association"]
+
+    O["Aggregate 30-Day<br/>Product Signals"]
+
+    P["Calculate Product Intent"]
+
+    Q["Retrieve CRM / ICP Context"]
+
+    R["Evaluate ICP Fit"]
+
+    S["Evaluate Data Readiness<br/>and Blockers"]
+
+    T["Determine Qualification State"]
+
+    U{"Sales Ready?"}
+
+    V["Update Revenue Context<br/>in HubSpot"]
+
+    W["Complete Without Handoff"]
+
+    X["Calculate Routing Target"]
+
+    Y{"Already Handed Off?"}
+    Z["No Duplicate Handoff"]
+
+    AA["Execute Sales Handoff"]
+
+    AB{"Handoff Successful?"}
+
+    AC["Record Technical Failure<br/>Qualification remains Sales Ready"]
+
+    AD["Mark Handed Off"]
+
+    AE["Start Sales SLA"]
+
+    AF["Record Final Processing State"]
+
+    A --> B
+
+    B -- No --> C
+    B -- Yes --> D
+
+    D -- No --> E
+    D -- Yes --> F
+
+    F --> G
+
+    G -- Yes --> H
+    G -- No --> I
+
+    I --> J
+    J --> K
+    K --> L
+
+    L -- No --> M
+    L -- Yes --> N
+
+    N --> O
+    O --> P
+    P --> Q
+    Q --> R
+    R --> S
+    S --> T
+
+    T --> V
+    V --> U
+
+    U -- No --> W
+    U -- Yes --> X
+
+    X --> Y
+
+    Y -- Yes --> Z
+    Y -- No --> AA
+
+    AA --> AB
+
+    AB -- No --> AC
+    AB -- Yes --> AD
+
+    AD --> AE
+    AE --> AF

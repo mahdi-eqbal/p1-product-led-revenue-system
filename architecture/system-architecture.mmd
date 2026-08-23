@@ -1,0 +1,51 @@
+flowchart LR
+
+    P["FlowPilot Product System<br/>Signup & Product Events"]
+
+    subgraph N["n8n — Revenue Orchestration Layer"]
+        W["Authenticated<br/>Webhook Ingress"]
+        V["Validation &<br/>Normalization"]
+        I["Identity Resolution<br/>& CRM Orchestration"]
+        Q["Fit + Intent + Readiness<br/>Qualification Engine"]
+        R["Routing &<br/>Sales Handoff"]
+    end
+
+    subgraph DB["PostgreSQL / Supabase — Operational Data Layer"]
+        E["Product Event Ledger"]
+        M["Identity Mapping"]
+        S["Account Signal State"]
+        O["Processing / Audit State"]
+    end
+
+    subgraph HS["HubSpot — CRM & Revenue System of Record"]
+        C["Contacts"]
+        CO["Companies"]
+        RS["Revenue State<br/>Fit / Intent / Qualification"]
+        H["Routing / Handoff<br/>Sales Context"]
+        SLA["Sales SLA"]
+    end
+
+    P --> W
+    W --> V
+
+    V --> E
+    E --> I
+
+    I <--> C
+    I <--> CO
+    I <--> M
+
+    E --> S
+    S --> Q
+
+    C --> Q
+    CO --> Q
+
+    Q --> RS
+    Q --> R
+
+    R --> H
+    H --> SLA
+
+    Q --> O
+    R --> O

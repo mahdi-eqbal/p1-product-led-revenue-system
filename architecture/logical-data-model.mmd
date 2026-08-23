@@ -1,0 +1,62 @@
+erDiagram
+
+    PRODUCT_USER {
+        string product_user_id PK
+        string email
+    }
+
+    WORKSPACE {
+        string workspace_id PK
+        string workspace_name
+    }
+
+    HUBSPOT_CONTACT {
+        string hubspot_contact_id PK
+        string product_user_id UK
+        string email
+    }
+
+    HUBSPOT_COMPANY {
+        string hubspot_company_id PK
+        string workspace_id UK
+        string company_domain
+    }
+
+    PRODUCT_EVENT {
+        string event_id PK
+        string event_type
+        datetime occurred_at
+        string product_user_id FK
+        string workspace_id FK
+    }
+
+    ACCOUNT_SIGNAL_STATE {
+        string workspace_id PK
+        int intent_score
+        string intent_state
+        boolean commercial_intent
+        datetime calculated_at
+    }
+
+    PROCESSING_RECORD {
+        string processing_id PK
+        string event_id FK
+        string processing_status
+        int attempt_number
+        datetime started_at
+        datetime completed_at
+    }
+
+    WORKSPACE ||--o{ PRODUCT_USER : contains
+
+    PRODUCT_USER ||--o{ PRODUCT_EVENT : generates
+
+    WORKSPACE ||--o{ PRODUCT_EVENT : receives
+
+    PRODUCT_USER ||--|| HUBSPOT_CONTACT : resolves_to
+
+    WORKSPACE ||--|| HUBSPOT_COMPANY : resolves_to
+
+    WORKSPACE ||--|| ACCOUNT_SIGNAL_STATE : has_current_state
+
+    PRODUCT_EVENT ||--o{ PROCESSING_RECORD : has_attempts
