@@ -1,0 +1,11 @@
+{
+    "event_id": "evt_p1_0008",
+    "event_type": "integration_connected",
+    "occurred_at": "2026-08-24T18:00:00Z",
+    "product_user_id": "usr_missing_1008",
+    "workspace_id": "ws_1001",
+    "email": "missing-user@northstar.example.com",
+    "properties": {
+        "integration_name": "Slack"
+    }
+}

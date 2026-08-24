@@ -1,0 +1,11 @@
+{
+    "event_id": "evt_p1_0006",
+    "event_type": "core_workflow_created",
+    "occurred_at": "2026-08-24T10:30:00Z",
+    "product_user_id": "usr_1002",
+    "workspace_id": "ws_1001",
+    "email": "jordan@northstar.example.com",
+    "properties": {
+        "workflow_name": "Lead Routing Automation"
+    }
+}

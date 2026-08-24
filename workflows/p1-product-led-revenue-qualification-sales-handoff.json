@@ -1,0 +1,1725 @@
+{
+  "name": "P1 — Product-Led Revenue Qualification & Sales Handoff",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "flowpilot/product-events",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "ef553401-ebe0-464e-97ea-c22d90b738ef",
+      "name": "Webhook",
+      "webhookId": "92617352-9a49-46cc-823a-9578f73ab4b6",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CzTPYAsnM46pgkSZ",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body ?? {};\n\nconst allowedEventTypes = new Set([\n  \"signup_completed\",\n  \"workspace_created\",\n  \"core_workflow_created\",\n  \"core_workflow_executed\",\n  \"teammate_invited\",\n  \"integration_connected\",\n  \"usage_threshold_reached\",\n  \"upgrade_intent_detected\"\n]);\n\nconst workspaceRequiredEvents = new Set([\n  \"workspace_created\",\n  \"core_workflow_created\",\n  \"core_workflow_executed\",\n  \"teammate_invited\",\n  \"integration_connected\",\n  \"usage_threshold_reached\",\n  \"upgrade_intent_detected\"\n]);\n\nconst errors = [];\n\nconst eventId =\n  typeof body.event_id === \"string\"\n    ? body.event_id.trim()\n    : \"\";\n\nconst eventType =\n  typeof body.event_type === \"string\"\n    ? body.event_type.trim().toLowerCase()\n    : \"\";\n\nconst productUserId =\n  typeof body.product_user_id === \"string\"\n    ? body.product_user_id.trim()\n    : \"\";\n\nconst workspaceId =\n  typeof body.workspace_id === \"string\"\n    ? body.workspace_id.trim()\n    : null;\n\nconst email =\n  typeof body.email === \"string\"\n    ? body.email.trim().toLowerCase()\n    : null;\n\nif (!eventId) {\n  errors.push(\"event_id is required\");\n}\n\nif (!eventType) {\n  errors.push(\"event_type is required\");\n} else if (!allowedEventTypes.has(eventType)) {\n  errors.push(`unsupported event_type: ${eventType}`);\n}\n\nif (!productUserId) {\n  errors.push(\"product_user_id is required\");\n}\n\nif (\n  workspaceRequiredEvents.has(eventType) &&\n  !workspaceId\n) {\n  errors.push(\n    `workspace_id is required for ${eventType}`\n  );\n}\n\nlet occurredAt = null;\n\nif (!body.occurred_at) {\n  errors.push(\"occurred_at is required\");\n} else {\n  const parsedDate = new Date(body.occurred_at);\n\n  if (Number.isNaN(parsedDate.getTime())) {\n    errors.push(\"occurred_at must be a valid timestamp\");\n  } else {\n    occurredAt = parsedDate.toISOString();\n  }\n}\n\nlet eventProperties = {};\n\nif (body.properties !== undefined) {\n  if (\n    body.properties === null ||\n    typeof body.properties !== \"object\" ||\n    Array.isArray(body.properties)\n  ) {\n    errors.push(\"properties must be a JSON object\");\n  } else {\n    eventProperties = body.properties;\n  }\n}\n\nreturn {\n  json: {\n    validation_status:\n      errors.length === 0 ? \"valid\" : \"invalid\",\n\n    validation_errors: errors,\n\n    event_id: eventId || null,\n    event_type: eventType || null,\n    occurred_at: occurredAt,\n    product_user_id: productUserId || null,\n    workspace_id: workspaceId,\n    email: email,\n\n    event_properties: eventProperties,\n\n    received_at: new Date().toISOString()\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "af6f2a58-5c12-4386-b8bf-cb32871702e3",
+      "name": "Validate & Normalize Event"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "65d5e128-ec0b-4904-a1bf-4fadcc993fe6",
+              "leftValue": "={{$json.validation_status}}",
+              "rightValue": "=valid",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        416,
+        -16
+      ],
+      "id": "b7d2df9a-3577-4bd8-a6bc-cbd2fd1c9b4e",
+      "name": "Event Valid?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.ingress_rejections (\n    event_id,\n    event_type,\n    product_user_id,\n    workspace_id,\n    rejection_reason,\n    validation_errors,\n    rejected_payload\n)\nVALUES (\n    $1,\n    $2,\n    $3,\n    $4,\n    $5,\n    $6::jsonb,\n    $7::jsonb\n)\nRETURNING\n    id,\n    event_id,\n    event_type,\n    rejection_reason,\n    rejected_at;",
+        "options": {
+          "queryReplacement": "={{$json.event_id}}\n{{$json.event_type}}\n{{$json.product_user_id}}\n{{$json.workspace_id}}\n{{$json.validation_errors.join(\"; \")}}\n{{JSON.stringify($json.validation_errors)}}\n{{JSON.stringify($json)}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        640,
+        80
+      ],
+      "id": "7bf81a63-5c3e-4015-890c-3c83d1ceb488",
+      "name": "Log Rejected Event",
+      "credentials": {
+        "postgres": {
+          "id": "8WCB3f8YsqEBdEhd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH inserted AS (\n    INSERT INTO public.product_events (\n        event_id,\n        event_type,\n        occurred_at,\n        product_user_id,\n        workspace_id,\n        event_properties,\n        received_at\n    )\n    VALUES (\n        $1,\n        $2,\n        $3,\n        $4,\n        $5,\n        $6::jsonb,\n        $7\n    )\n    ON CONFLICT (event_id) DO NOTHING\n    RETURNING event_id\n)\nSELECT\n    CASE\n        WHEN EXISTS (SELECT 1 FROM inserted)\n            THEN 'inserted'\n        ELSE 'duplicate'\n    END AS event_status,\n    $1::text AS event_id;",
+        "options": {
+          "queryReplacement": "={{$json.event_id}} {{$json.event_type}} {{$json.occurred_at}} {{$json.product_user_id}} {{$json.workspace_id}} {{JSON.stringify($json.event_properties)}} {{$json.received_at}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        640,
+        -80
+      ],
+      "id": "14f9462e-0a7e-4d6d-9718-cf8a7e6052b6",
+      "name": "Persist Product Event",
+      "credentials": {
+        "postgres": {
+          "id": "8WCB3f8YsqEBdEhd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "02a555da-9bba-468a-bf33-593b7c019490",
+              "leftValue": "={{$json.event_status}}",
+              "rightValue": "inserted",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        864,
+        -80
+      ],
+      "id": "859b5d5f-7418-4e6a-a872-f6865e0e76d8",
+      "name": "New Event?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.processing_attempts (\n    event_id,\n    attempt_number,\n    processing_status\n)\nVALUES (\n    $1,\n    (\n        SELECT COALESCE(MAX(attempt_number), 0) + 1\n        FROM public.processing_attempts\n        WHERE event_id = $1\n    ),\n    'processing'\n)\nRETURNING\n    id,\n    event_id,\n    attempt_number,\n    processing_status,\n    started_at;",
+        "options": {
+          "queryReplacement": "={{$json.event_id}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1088,
+        -80
+      ],
+      "id": "44f0ccf3-a211-4ecc-bd65-b4488599b69d",
+      "name": "Create Processing Attempt",
+      "credentials": {
+        "postgres": {
+          "id": "8WCB3f8YsqEBdEhd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    pe.event_id,\n    pe.event_type,\n    pe.occurred_at,\n    pe.product_user_id,\n    pe.workspace_id,\n    pe.event_properties,\n    pe.received_at,\n\n    pa.id AS processing_attempt_id,\n    pa.attempt_number,\n    pa.processing_status\n\nFROM public.product_events pe\n\nJOIN public.processing_attempts pa\n    ON pa.event_id = pe.event_id\n\nWHERE pe.event_id = $1\n  AND pa.id = $2;",
+        "options": {
+          "queryReplacement": "={{$json.event_id}} {{$json.id}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1312,
+        -80
+      ],
+      "id": "c6908fbe-d75b-46aa-93b1-9f05a1da7128",
+      "name": "Load Trusted Event Context",
+      "credentials": {
+        "postgres": {
+          "id": "8WCB3f8YsqEBdEhd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    pe.event_id,\n    pe.event_type,\n    pe.occurred_at,\n    pe.product_user_id,\n    pe.workspace_id,\n    pe.event_properties,\n    pe.received_at,\n\n    pe.processing_attempt_id,\n    pe.attempt_number,\n    pe.processing_status,\n\n    user_map.hubspot_record_id AS hubspot_contact_id,\n    user_map.resolution_method AS contact_resolution_method,\n\n    workspace_map.hubspot_record_id AS hubspot_company_id,\n    workspace_map.resolution_method AS company_resolution_method\n\nFROM (\n    SELECT\n        $1::text AS event_id,\n        $2::text AS event_type,\n        $3::timestamptz AS occurred_at,\n        $4::text AS product_user_id,\n        $5::text AS workspace_id,\n        $6::jsonb AS event_properties,\n        $7::timestamptz AS received_at,\n        $8::bigint AS processing_attempt_id,\n        $9::integer AS attempt_number,\n        $10::text AS processing_status\n) pe\n\nLEFT JOIN public.identity_map user_map\n    ON user_map.entity_type = 'product_user'\n   AND user_map.product_id = pe.product_user_id\n\nLEFT JOIN public.identity_map workspace_map\n    ON workspace_map.entity_type = 'workspace'\n   AND workspace_map.product_id = pe.workspace_id;",
+        "options": {
+          "queryReplacement": "={{$json.event_id}} {{$json.event_type}} {{$json.occurred_at}} {{$json.product_user_id}} {{$json.workspace_id}} {{JSON.stringify($json.event_properties)}} {{$json.received_at}} {{$json.processing_attempt_id}} {{$json.attempt_number}} {{$json.processing_status}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1536,
+        -80
+      ],
+      "id": "9e9402f6-705a-4fe7-8c94-a433e775469f",
+      "name": "Resolve Identity Map",
+      "credentials": {
+        "postgres": {
+          "id": "8WCB3f8YsqEBdEhd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "786a5910-16e2-43bd-b1fe-c94575ac730f",
+              "leftValue": "={{$json.hubspot_contact_id}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "67492cc5-d775-4951-98ff-631fa3529422",
+              "leftValue": "={{$json.hubspot_company_id}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1760,
+        -80
+      ],
+      "id": "88d0083c-e433-47c7-bb91-c1a56dde0fa6",
+      "name": "Identity Resolved?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/contacts/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"filterGroups\": [\n    {\n      \"filters\": [\n        {\n          \"propertyName\": \"product_user_id\",\n          \"operator\": \"EQ\",\n          \"value\": \"{{$json.product_user_id}}\"\n        }\n      ]\n    }\n  ],\n  \"properties\": [\n    \"email\",\n    \"firstname\",\n    \"lastname\",\n    \"product_user_id\"\n  ],\n  \"limit\": 2\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1984,
+        16
+      ],
+      "id": "8c79eab0-048f-49f2-95bb-29caf184c929",
+      "name": "Lookup Contact in HubSpot",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "AJWACxxNnDhIcDuK",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{$json.lookup_status}}",
+                    "rightValue": "resolved",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "8cec4ab9-0b81-42c2-8964-bc97f61299b1"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "resolved"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "28c36a25-679a-4bcc-99da-0477d2eda349",
+                    "leftValue": "={{$json.lookup_status}}",
+                    "rightValue": "not_found",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "not_found"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "6dca8137-bb2e-4c50-84f7-51462c055dc2",
+                    "leftValue": "={{$json.lookup_status}}",
+                    "rightValue": "ambiguous",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ambiguous"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        2432,
+        16
+      ],
+      "id": "1bdc95e5-0754-4973-885a-c3234cb2f3a4",
+      "name": "Contact Lookup Outcome"
+    },
+    {
+      "parameters": {
+        "jsCode": "const total = $json.total ?? 0;\nconst results = $json.results ?? [];\n\nlet lookup_status;\n\nif (total === 1) {\n  lookup_status = \"resolved\";\n} else if (total === 0) {\n  lookup_status = \"not_found\";\n} else {\n  lookup_status = \"ambiguous\";\n}\n\nreturn {\n  json: {\n    lookup_status,\n    match_count: total,\n    hubspot_contact_id: total === 1 ? results[0].id : null,\n    matched_contact: total === 1 ? results[0].properties : null\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2208,
+        16
+      ],
+      "id": "09f25d9d-56ce-4736-8bb0-628a309e6ada",
+      "name": "Classify Contact Lookup"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.identity_map (\n    entity_type,\n    product_id,\n    hubspot_object_type,\n    hubspot_record_id,\n    resolution_method\n)\nVALUES (\n    'product_user',\n    $1,\n    'contact',\n    $2,\n    'stable_id'\n)\nON CONFLICT (entity_type, product_id)\nDO UPDATE SET\n    hubspot_record_id = EXCLUDED.hubspot_record_id,\n    resolution_method = EXCLUDED.resolution_method\nRETURNING\n    entity_type,\n    product_id,\n    hubspot_object_type,\n    hubspot_record_id,\n    resolution_method;",
+        "options": {
+          "queryReplacement": "={{$json.matched_contact.product_user_id}}\n{{$json.hubspot_contact_id}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2656,
+        -256
+      ],
+      "id": "a682bec5-b484-4f6b-b899-de886bc3406a",
+      "name": "Store Contact Identity Mapping",
+      "credentials": {
+        "postgres": {
+          "id": "8WCB3f8YsqEBdEhd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    workspace_id,\n    product_intent_score,\n    product_intent_state,\n    commercial_intent_detected,\n    important_signal_summary,\n    latest_meaningful_signal_at,\n    intent_window_start,\n    calculated_at,\n    model_version\nFROM public.account_signal_state\nWHERE workspace_id = $1;",
+        "options": {
+          "queryReplacement": "={{$json.workspace_id}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1984,
+        -144
+      ],
+      "id": "f54f8bf6-a3d1-49d3-a0e6-70b9047cad72",
+      "name": "Load Account Signal State",
+      "credentials": {
+        "postgres": {
+          "id": "8WCB3f8YsqEBdEhd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    event_type,\n    COUNT(*) AS event_count\nFROM public.product_events\nWHERE workspace_id = $1\n  AND occurred_at >= NOW() - INTERVAL '30 days'\nGROUP BY event_type\nORDER BY event_type;",
+        "options": {
+          "queryReplacement": "={{$json.workspace_id}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2656,
+        -480
+      ],
+      "id": "28028d4b-c862-4a8d-a38f-16ceddae86ff",
+      "name": "Load 30-Day Product Signals",
+      "credentials": {
+        "postgres": {
+          "id": "8WCB3f8YsqEBdEhd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const signals = $input.all();\n\nconst model = {\n  signup_completed: {\n    points: 5,\n    cap: 1\n  },\n  workspace_created: {\n    points: 10,\n    cap: 1\n  },\n  core_workflow_created: {\n    points: 15,\n    cap: 3\n  },\n  core_workflow_executed: {\n    points: 10,\n    cap: 3\n  },\n  teammate_invited: {\n    points: 15,\n    cap: 2\n  },\n  integration_connected: {\n    points: 30,\n    cap: 2\n  },\n  usage_threshold_reached: {\n    points: 35,\n    cap: 1\n  },\n  upgrade_intent_detected: {\n    points: 50,\n    cap: 1\n  }\n};\n\nlet score = 0;\nlet commercialIntentDetected = false;\nconst breakdown = [];\n\nfor (const item of signals) {\n  const eventType = item.json.event_type;\n  const rawCount = Number(item.json.event_count || 0);\n\n  const rule = model[eventType];\n\n  if (!rule) {\n    continue;\n  }\n\n  const countedEvents = Math.min(rawCount, rule.cap);\n  const contribution = countedEvents * rule.points;\n\n  score += contribution;\n\n  if (eventType === 'upgrade_intent_detected' && rawCount > 0) {\n    commercialIntentDetected = true;\n  }\n\n  breakdown.push({\n    event_type: eventType,\n    raw_count: rawCount,\n    counted_events: countedEvents,\n    points_each: rule.points,\n    contribution\n  });\n}\n\nlet intentState;\n\nif (commercialIntentDetected) {\n  intentState = 'commercial_intent';\n} else if (score >= 70) {\n  intentState = 'high_intent';\n} else if (score >= 30) {\n  intentState = 'medium_intent';\n} else {\n  intentState = 'low_intent';\n}\n\nreturn [\n  {\n    json: {\n      rolling_intent_score: score,\n      rolling_intent_state: intentState,\n      commercial_intent_detected: commercialIntentDetected,\n      scoring_window_days: 30,\n      model_version: 'v1',\n      signal_breakdown: breakdown\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        -480
+      ],
+      "id": "1ae1d207-122b-4511-a85a-5d026dd94b8d",
+      "name": "Calculate Rolling Intent Score"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE public.account_signal_state\nSET\n    product_intent_score = $2,\n    product_intent_state = $3,\n    commercial_intent_detected = $4,\n    important_signal_summary = $5,\n    intent_window_start = NOW() - INTERVAL '30 days',\n    calculated_at = NOW(),\n    model_version = $6\nWHERE workspace_id = $1\nRETURNING\n    workspace_id,\n    product_intent_score,\n    product_intent_state,\n    commercial_intent_detected,\n    important_signal_summary,\n    intent_window_start,\n    calculated_at,\n    model_version;",
+        "options": {
+          "queryReplacement": "={{$('Identity Resolved?').item.json.workspace_id}} {{$json.rolling_intent_score}} {{$json.rolling_intent_state}} {{$json.commercial_intent_detected}} {{JSON.stringify($json.signal_breakdown)}} {{$json.model_version}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        3104,
+        -480
+      ],
+      "id": "2a92031f-a020-4982-baeb-094061b3ae78",
+      "name": "Persist Rolling Intent State",
+      "credentials": {
+        "postgres": {
+          "id": "8WCB3f8YsqEBdEhd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{'https://api.hubapi.com/crm/v3/objects/companies/' + $('Identity Resolved?').item.json.hubspot_company_id}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "properties",
+              "value": "name,country,numberofemployees,industry,workspace_id,handoff_status,qualification_state"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        3280,
+        -480
+      ],
+      "id": "0992a520-a057-4ecd-802a-a8c4844ecc9c",
+      "name": "Load Company from HubSpot",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "AJWACxxNnDhIcDuK",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const props = $json.properties ?? {};\n\nconst country = (props.country ?? '').trim();\nconst industry = (props.industry ?? '').trim();\nconst employees = Number(props.numberofemployees ?? 0);\n\nlet fit = 'weak_fit';\nconst reasons = [];\n\n// Geography\nconst supportedCountries = [\n  'Germany',\n  'United States',\n  'Canada',\n  'United Kingdom',\n  'France',\n  'Netherlands'\n];\n\nconst geographyFit = supportedCountries.includes(country);\n\nif (geographyFit) {\n  reasons.push(`Supported geography: ${country}`);\n} else {\n  reasons.push(`Unsupported or unknown geography: ${country || 'missing'}`);\n}\n\n// Company size\nlet sizeFit = 'weak';\n\nif (employees >= 50 && employees < 250) {\n  sizeFit = 'strong';\n  reasons.push(`Strong company-size fit: ${employees} employees`);\n} else if (employees >= 20 && employees < 1000) {\n  sizeFit = 'moderate';\n  reasons.push(`Moderate company-size fit: ${employees} employees`);\n} else if (employees >= 1000) {\n  sizeFit = 'enterprise';\n  reasons.push(`Enterprise account: ${employees} employees`);\n} else {\n  reasons.push(`Weak or unknown company-size fit: ${employees || 'missing'}`);\n}\n\n// Industry\nconst targetIndustries = [\n  'INFORMATION_TECHNOLOGY_AND_SERVICES',\n  'COMPUTER_SOFTWARE',\n  'INTERNET'\n];\n\nconst industryFit = targetIndustries.includes(industry);\n\nif (industryFit) {\n  reasons.push(`Target industry: ${industry}`);\n} else {\n  reasons.push(`Non-target or unknown industry: ${industry || 'missing'}`);\n}\n\n// Final fit\nif (!geographyFit) {\n  fit = 'disqualified';\n} else if (sizeFit === 'enterprise') {\n  fit = 'moderate_fit';\n} else if (sizeFit === 'strong' && industryFit) {\n  fit = 'strong_fit';\n} else if (\n  (sizeFit === 'strong' || sizeFit === 'moderate') &&\n  industryFit\n) {\n  fit = 'moderate_fit';\n} else {\n  fit = 'weak_fit';\n}\n\nreturn {\n  json: {\n    hubspot_company_id: $json.id,\n    workspace_id: props.workspace_id,\n    company_name: props.name,\n    country,\n    industry,\n    number_of_employees: employees,\n    icp_fit: fit,\n    icp_fit_reasons: reasons\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3616,
+        -480
+      ],
+      "id": "20bc96e2-e4fe-44a2-acce-660872f6fad2",
+      "name": "Calculate ICP Fit"
+    },
+    {
+      "parameters": {
+        "jsCode": "const identity = $('Identity Resolved?').item.json;\nconst company = $json;\n\nconst missing = [];\n\nif (!identity.product_user_id) {\n  missing.push('product_user_id');\n}\n\nif (!identity.workspace_id) {\n  missing.push('workspace_id');\n}\n\nif (!identity.hubspot_contact_id) {\n  missing.push('hubspot_contact_id');\n}\n\nif (!identity.hubspot_company_id) {\n  missing.push('hubspot_company_id');\n}\n\nif (!company.company_name) {\n  missing.push('company_name');\n}\n\nif (!company.country) {\n  missing.push('country');\n}\n\nif (!company.industry) {\n  missing.push('industry');\n}\n\nif (!company.number_of_employees) {\n  missing.push('number_of_employees');\n}\n\nlet dataReadiness;\n\nif (missing.length === 0) {\n  dataReadiness = 'ready';\n} else {\n  dataReadiness = 'incomplete';\n}\n\nreturn {\n  json: {\n    ...company,\n    data_readiness: dataReadiness,\n    missing_fields: missing,\n    hubspot_contact_id: identity.hubspot_contact_id,\n    hubspot_company_id: identity.hubspot_company_id,\n    product_user_id: identity.product_user_id\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3776,
+        -480
+      ],
+      "id": "cdf9db54-14f5-4c3c-a3f9-9fb100b3aa09",
+      "name": "Calculate Data Readiness"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $json;\n\nconst signalState = $('Persist Rolling Intent State').item.json;\n\nconst icpFit = data.icp_fit;\nconst dataReadiness = data.data_readiness;\nconst intentState = signalState.product_intent_state;\nconst intentScore = Number(signalState.product_intent_score ?? 0);\nconst commercialIntent = signalState.commercial_intent_detected === true;\n\nlet qualificationState = 'monitoring';\nlet qualificationReason = [];\n\n// Hard readiness blocker\nif (dataReadiness !== 'ready') {\n  qualificationState = 'handoff_blocked';\n  qualificationReason.push(`Data readiness is ${dataReadiness}`);\n}\n\n// Commercial disqualification\nelse if (icpFit === 'disqualified') {\n  qualificationState = 'not_qualified';\n  qualificationReason.push('Account failed ICP requirements');\n}\n\n// Strong signal + acceptable fit\nelse if (\n  (icpFit === 'strong_fit' || icpFit === 'moderate_fit') &&\n  (intentState === 'high_intent' || commercialIntent)\n) {\n  qualificationState = 'sales_ready';\n  qualificationReason.push(\n    `${icpFit} with ${intentState} product intent`\n  );\n}\n\n// Promising but not yet sales-ready\nelse if (\n  (icpFit === 'strong_fit' || icpFit === 'moderate_fit') &&\n  intentState === 'medium_intent'\n) {\n  qualificationState = 'pql_candidate';\n  qualificationReason.push(\n    `${icpFit} with medium product intent`\n  );\n}\n\n// Weak fit requires review if intent is strong\nelse if (\n  icpFit === 'weak_fit' &&\n  (intentState === 'high_intent' || commercialIntent)\n) {\n  qualificationState = 'needs_review';\n  qualificationReason.push(\n    `Strong product intent but weak ICP fit`\n  );\n}\n\nelse {\n  qualificationState = 'monitoring';\n  qualificationReason.push(\n    `Current fit and intent combination does not meet qualification threshold`\n  );\n}\n\nreturn {\n  json: {\n    ...data,\n    product_intent_score: intentScore,\n    product_intent_state: intentState,\n    commercial_intent_detected: commercialIntent,\n    qualification_state: qualificationState,\n    qualification_reason: qualificationReason.join('; ')\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3968,
+        -480
+      ],
+      "id": "23f47c6d-4777-47c2-9fd6-01ab92ba3dfd",
+      "name": "Calculate Qualification Decision"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{'https://api.hubapi.com/crm/v3/objects/companies/' + $json.hubspot_company_id}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"properties\": {\n    \"icp_fit\": \"{{ ({'strong_fit':'Strong Fit','moderate_fit':'Moderate Fit','weak_fit':'Weak Fit','disqualified':'Disqualified'})[$json.icp_fit] }}\",\n    \"product_intent_score\": \"{{$json.product_intent_score}}\",\n    \"product_intent_state\": \"{{ ({'low_intent':'Low Intent','medium_intent':'Medium Intent','high_intent':'High Intent','commercial_intent':'Commercial Intent'})[$json.product_intent_state] }}\",\n    \"data_readiness\": \"{{ ({'ready':'Ready','incomplete':'Incomplete','ambiguous':'Ambiguous','blocked':'Blocked'})[$json.data_readiness] }}\",\n    \"qualification_state\": \"{{ ({'monitoring':'Monitoring','pql_candidate':'PQL Candidate','needs_review':'Needs Review','sales_ready':'Sales Ready','handoff_blocked':'Handoff Blocked','handed_off':'Handed Off','not_qualified':'Not Qualified'})[$json.qualification_state] }}\",\n    \"qualification_reason\": \"{{$json.qualification_reason}}\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        4224,
+        -480
+      ],
+      "id": "a725f142-aff3-4a60-beda-21a0ebc3422d",
+      "name": "Update HubSpot Qualification",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "AJWACxxNnDhIcDuK",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const qualification = $('Calculate Qualification Decision').item.json;\n\nconst country = qualification.country;\nconst employees = Number(qualification.number_of_employees ?? 0);\nconst qualificationState = qualification.qualification_state;\n\nlet routingTarget = 'manual_review';\nlet routingReason = [];\n\nconst northAmerica = [\n  'United States',\n  'Canada'\n];\n\nconst emea = [\n  'Germany',\n  'United Kingdom',\n  'France',\n  'Netherlands'\n];\n\nif (qualificationState !== 'sales_ready') {\n  routingTarget = 'manual_review';\n  routingReason.push(`Qualification state is ${qualificationState}`);\n}\n\nelse if (employees >= 1000) {\n  routingTarget = 'enterprise_review';\n  routingReason.push(`Enterprise account with ${employees} employees`);\n}\n\nelse if (northAmerica.includes(country) && employees < 100) {\n  routingTarget = 'na_smb';\n  routingReason.push(`${country}, ${employees} employees`);\n}\n\nelse if (northAmerica.includes(country) && employees >= 100) {\n  routingTarget = 'na_mid_market';\n  routingReason.push(`${country}, ${employees} employees`);\n}\n\nelse if (emea.includes(country) && employees < 100) {\n  routingTarget = 'emea_smb';\n  routingReason.push(`${country}, ${employees} employees`);\n}\n\nelse if (emea.includes(country) && employees >= 100) {\n  routingTarget = 'emea_mid_market';\n  routingReason.push(`${country}, ${employees} employees`);\n}\n\nelse {\n  routingTarget = 'manual_review';\n  routingReason.push(`No deterministic routing rule for ${country || 'unknown geography'}`);\n}\n\nreturn {\n  json: {\n    ...qualification,\n    routing_target: routingTarget,\n    routing_reason: routingReason.join('; ')\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4448,
+        -480
+      ],
+      "id": "9b0088d4-f6c2-454d-9cfd-aa15eea6a2f4",
+      "name": "Calculate Routing Target"
+    },
+    {
+      "parameters": {
+        "url": "={{'https://api.hubapi.com/crm/v3/objects/companies/' + $json.hubspot_company_id + '/associations/deals'}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        4672,
+        -480
+      ],
+      "id": "a4d58664-8c2f-4558-9b7e-f31602e3450c",
+      "name": "Load Company Deals",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "AJWACxxNnDhIcDuK",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{'https://api.hubapi.com/crm/v3/objects/companies/' + $('Calculate Routing Target').item.json.hubspot_company_id}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"properties\": {\n    \"routing_target\": \"{{ ({'na_smb':'NA SMB','na_mid_market':'NA Mid-Market','emea_smb':'EMEA SMB','emea_mid_market':'EMEA Mid-Market','enterprise_review':'Enterprise Review','manual_review':'Manual Review'})[$('Calculate Routing Target').item.json.routing_target] }}\",\n    \"handoff_status\": \"Pending\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        5616,
+        -480
+      ],
+      "id": "d0826004-ee12-4f3a-92b1-4382f2bdb7d6",
+      "name": "Update HubSpot Routing",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "AJWACxxNnDhIcDuK",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/tasks",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"properties\": {\n    \"hs_task_subject\": \"Follow up with Northstar Labs - Product Qualified Account\",\n    \"hs_task_body\": \"Account reached Sales Ready status through product-led qualification. Routing target: EMEA Mid-Market. Product intent score: 85.\",\n    \"hs_task_status\": \"NOT_STARTED\",\n    \"hs_task_priority\": \"HIGH\",\n    \"hs_timestamp\": \"{{ DateTime.now().plus({ days: 1 }).toISO() }}\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        5792,
+        -480
+      ],
+      "id": "3d12d7c9-88c2-43ef-9a15-5e3e7affccd2",
+      "name": "Create Sales Handoff Task",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "AJWACxxNnDhIcDuK",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{'https://api.hubapi.com/crm/v3/objects/tasks/' + $('Create Sales Handoff Task').item.json.id + '/associations/companies/' + $('Calculate Routing Target').item.json.hubspot_company_id + '/task_to_company'}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        6016,
+        -480
+      ],
+      "id": "04dfb621-784b-41e5-9777-4d1a390329fb",
+      "name": "Associate Task to Company",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "AJWACxxNnDhIcDuK",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{'https://api.hubapi.com/crm/v3/objects/tasks/' + $('Create Sales Handoff Task').item.json.id + '/associations/contacts/' + $('Calculate Qualification Decision').item.json.hubspot_contact_id + '/task_to_contact'}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        6240,
+        -480
+      ],
+      "id": "dd0725d0-7b03-4cb1-acee-447c00e23b31",
+      "name": "Associate Task to Contact",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "AJWACxxNnDhIcDuK",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{'https://api.hubapi.com/crm/v3/objects/companies/' + $('Calculate Qualification Decision').item.json.hubspot_company_id}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"properties\": {\n    \"qualification_state\": \"Handed Off\",\n    \"handoff_status\": \"Completed\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        6464,
+        -480
+      ],
+      "id": "57f3b14e-9c83-4981-8824-6cf80e0bb388",
+      "name": "Finalize HubSpot Handoff",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "AJWACxxNnDhIcDuK",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE public.processing_attempts\nSET\n    processing_status = 'completed',\n    qualification_state = $2,\n    handoff_status = $3,\n    completed_at = NOW()\nWHERE id = $1\nRETURNING\n    id,\n    event_id,\n    attempt_number,\n    processing_status,\n    qualification_state,\n    handoff_status,\n    completed_at;",
+        "options": {
+          "queryReplacement": "={{ [ $('Identity Resolved?').item.json.processing_attempt_id, 'handed_off', 'completed' ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        6688,
+        -480
+      ],
+      "id": "adde15f2-a44e-4d2f-9f2d-c1be7647ec48",
+      "name": "Complete Processing Attempt",
+      "credentials": {
+        "postgres": {
+          "id": "8WCB3f8YsqEBdEhd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "d8dc322f-c931-410a-93e0-7858045b6e50",
+              "leftValue": "={{$('Load Company from HubSpot').item.json.properties.handoff_status}}",
+              "rightValue": "Completed",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3456,
+        -480
+      ],
+      "id": "9456b0e8-f7e5-4575-8538-212a124ee828",
+      "name": "Handoff Already Completed?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const deals = $json.results ?? [];\n\nreturn {\n  json: {\n    deal_count: deals.length,\n    inputs: deals.map(deal => ({\n      id: deal.id\n    }))\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4848,
+        -480
+      ],
+      "id": "5ca22991-37bd-4768-8793-5b4c38dd6e87",
+      "name": "Prepare Deal Status Lookup"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/deals/batch/read",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  properties: [\n    \"dealname\",\n    \"dealstage\",\n    \"hs_is_closed\",\n    \"hs_is_closed_won\"\n  ],\n  inputs: $json.inputs\n}\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        4992,
+        -480
+      ],
+      "id": "6f249873-6dc2-41ac-abeb-334a405b1aaa",
+      "name": "Load Deal Statuses",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "AJWACxxNnDhIcDuK",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const deals = $json.results ?? [];\n\nconst activeDeals = deals.filter(deal => {\n  return deal.properties?.hs_is_closed === \"false\";\n});\n\nreturn {\n  json: {\n    active_deal_exists: activeDeals.length > 0,\n    active_deal_count: activeDeals.length,\n    active_deal_ids: activeDeals.map(deal => deal.id),\n    active_deal_names: activeDeals.map(\n      deal => deal.properties?.dealname ?? null\n    )\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5168,
+        -480
+      ],
+      "id": "a3ef5a8c-073b-415d-b7a4-a32c5eacd2ae",
+      "name": "Evaluate Active Deal Blocker"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "9207f1be-87f5-4668-8618-7540e216b7f7",
+              "leftValue": "={{$json.active_deal_exists}}",
+              "rightValue": "={{true}}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        5392,
+        -480
+      ],
+      "id": "390d1407-b826-4ff3-828f-7fbbc87db6be",
+      "name": "Active Deal Exists?"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{'https://api.hubapi.com/crm/v3/objects/companies/' + $('Calculate Qualification Decision').item.json.hubspot_company_id}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"properties\": {\n    \"qualification_state\": \"Handoff Blocked\",\n    \"handoff_status\": \"Review Required\",\n    \"qualification_reason\": \"Active sales deal already exists; duplicate product-led handoff suppressed.\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        5616,
+        -656
+      ],
+      "id": "a7fad4e5-bd28-4c26-9624-38efda5bee71",
+      "name": "Block Handoff — Active Deal",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "AJWACxxNnDhIcDuK",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE public.processing_attempts\nSET\n    processing_status = 'completed',\n    qualification_state = 'handoff_blocked',\n    handoff_status = 'review_required',\n    completed_at = NOW()\nWHERE id = (\n    SELECT id\n    FROM public.processing_attempts\n    WHERE event_id = $1\n    ORDER BY attempt_number DESC\n    LIMIT 1\n)\nRETURNING\n    id,\n    event_id,\n    attempt_number,\n    processing_status,\n    qualification_state,\n    handoff_status,\n    completed_at;",
+        "options": {
+          "queryReplacement": "={{ [   $('Identity Resolved?').item.json.event_id ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        5824,
+        -656
+      ],
+      "id": "aa79253a-4069-446b-98f0-b81e2a754846",
+      "name": "Complete Blocked Processing Attempt",
+      "credentials": {
+        "postgres": {
+          "id": "8WCB3f8YsqEBdEhd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE public.processing_attempts\nSET\n    processing_status = 'review_required',\n    qualification_state = 'needs_review',\n    handoff_status = 'review_required',\n    failure_type = 'identity_not_found',\n    failure_reason = 'Product user could not be resolved to a HubSpot Contact',\n    completed_at = NOW()\nWHERE id = (\n    SELECT id\n    FROM public.processing_attempts\n    WHERE event_id = $1\n    ORDER BY attempt_number DESC\n    LIMIT 1\n)\nRETURNING\n    id,\n    event_id,\n    attempt_number,\n    processing_status,\n    qualification_state,\n    handoff_status,\n    failure_type,\n    failure_reason,\n    completed_at;",
+        "options": {
+          "queryReplacement": "={{ [ $('Identity Resolved?').item.json.event_id ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2656,
+        16
+      ],
+      "id": "9248a2f2-2cf2-4f12-b02c-d191bbc9ae10",
+      "name": "Mark Identity Review Required",
+      "credentials": {
+        "postgres": {
+          "id": "8WCB3f8YsqEBdEhd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE public.processing_attempts\nSET\n    processing_status = 'completed',\n    qualification_state = 'handed_off',\n    handoff_status = 'completed',\n    completed_at = NOW()\nWHERE id = (\n    SELECT id\n    FROM public.processing_attempts\n    WHERE event_id = $1\n    ORDER BY attempt_number DESC\n    LIMIT 1\n)\nRETURNING\n    id,\n    event_id,\n    attempt_number,\n    processing_status,\n    qualification_state,\n    handoff_status,\n    completed_at;",
+        "options": {
+          "queryReplacement": "={{ [ $('Identity Resolved?').item.json.event_id ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        3616,
+        -688
+      ],
+      "id": "818a1bc6-5640-4883-8673-bd9a0d9238e4",
+      "name": "Complete Existing Handoff Processing",
+      "credentials": {
+        "postgres": {
+          "id": "8WCB3f8YsqEBdEhd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE public.processing_attempts\nSET\n    processing_status = 'review_required',\n    qualification_state = 'needs_review',\n    handoff_status = 'review_required',\n    failure_type = 'identity_ambiguous',\n    failure_reason = 'Multiple HubSpot Contacts matched the product identity',\n    completed_at = NOW()\nWHERE id = (\n    SELECT id\n    FROM public.processing_attempts\n    WHERE event_id = $1\n    ORDER BY attempt_number DESC\n    LIMIT 1\n)\nRETURNING\n    id,\n    event_id,\n    attempt_number,\n    processing_status,\n    qualification_state,\n    handoff_status,\n    failure_type,\n    failure_reason,\n    completed_at;",
+        "options": {
+          "queryReplacement": "={{ [ $('Identity Resolved?').item.json.event_id ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2656,
+        192
+      ],
+      "id": "f5facb8c-fdad-4db8-97bb-92c1900950a0",
+      "name": "Mark Ambiguous Identity Review",
+      "credentials": {
+        "postgres": {
+          "id": "8WCB3f8YsqEBdEhd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/companies/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"filterGroups\": [\n    {\n      \"filters\": [\n        {\n          \"propertyName\": \"workspace_id\",\n          \"operator\": \"EQ\",\n          \"value\": \"{{$('Identity Resolved?').item.json.workspace_id}}\"\n        }\n      ]\n    }\n  ],\n  \"properties\": [\n    \"name\",\n    \"domain\",\n    \"workspace_id\"\n  ],\n  \"limit\": 2\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2848,
+        -256
+      ],
+      "id": "ae08a307-8ed1-4b45-8ad4-115516f7d58a",
+      "name": "Lookup Company in HubSpot",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "AJWACxxNnDhIcDuK",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const total = $json.total ?? 0;\nconst results = $json.results ?? [];\n\nlet lookup_status;\n\nif (total === 1) {\n  lookup_status = \"resolved\";\n} else if (total === 0) {\n  lookup_status = \"not_found\";\n} else {\n  lookup_status = \"ambiguous\";\n}\n\nreturn {\n  json: {\n    lookup_status,\n    match_count: total,\n    hubspot_company_id: total === 1 ? results[0].id : null,\n    matched_company: total === 1 ? results[0].properties : null\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3088,
+        -256
+      ],
+      "id": "6d017579-ba96-4ccf-845e-98f888609bec",
+      "name": "Classify Company Lookup"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{$json.lookup_status}}",
+                    "rightValue": "resolved",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "54a2f577-daf0-4195-864a-2884ef8c8247"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "resolved"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "6c5dcfec-9ea3-4092-a3a2-25a5ce16a083",
+                    "leftValue": "={{$json.lookup_status}}",
+                    "rightValue": "not_found",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "not_found"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "1b2dbbc3-7fd7-445a-b042-f7459266134d",
+                    "leftValue": "={{$json.lookup_status}}",
+                    "rightValue": "ambiguous",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ambiguous"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        3344,
+        -16
+      ],
+      "id": "25cc77c2-3796-4abd-8d8e-bf8240cd943c",
+      "name": "Company Lookup Outcome"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.identity_map (\n    entity_type,\n    product_id,\n    hubspot_object_type,\n    hubspot_record_id,\n    resolution_method\n)\nVALUES (\n    'workspace',\n    $1,\n    'company',\n    $2,\n    'stable_id'\n)\nON CONFLICT (entity_type, product_id)\nDO UPDATE SET\n    hubspot_record_id = EXCLUDED.hubspot_record_id,\n    resolution_method = EXCLUDED.resolution_method\nRETURNING\n    entity_type,\n    product_id,\n    hubspot_object_type,\n    hubspot_record_id,\n    resolution_method;",
+        "options": {
+          "queryReplacement": "={{ [   $json.matched_company.workspace_id,   $json.hubspot_company_id ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        3568,
+        -256
+      ],
+      "id": "62489051-4691-4512-b5b5-fa1a8eed8c1d",
+      "name": "Store Company Identity Mapping",
+      "credentials": {
+        "postgres": {
+          "id": "8WCB3f8YsqEBdEhd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE public.processing_attempts\nSET\n    processing_status = 'review_required',\n    qualification_state = 'needs_review',\n    handoff_status = 'review_required',\n    failure_type = 'company_identity_not_found',\n    failure_reason = 'Workspace could not be resolved to a HubSpot Company',\n    completed_at = NOW()\nWHERE id = (\n    SELECT id\n    FROM public.processing_attempts\n    WHERE event_id = $1\n    ORDER BY attempt_number DESC\n    LIMIT 1\n)\nRETURNING\n    id,\n    event_id,\n    attempt_number,\n    processing_status,\n    qualification_state,\n    handoff_status,\n    failure_type,\n    failure_reason,\n    completed_at;",
+        "options": {
+          "queryReplacement": "={{ [ $('Identity Resolved?').item.json.event_id ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        3568,
+        -64
+      ],
+      "id": "4aedf474-f53c-4651-bb3f-6bf76ee1911b",
+      "name": "Mark Company Identity Review Required",
+      "credentials": {
+        "postgres": {
+          "id": "8WCB3f8YsqEBdEhd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE public.processing_attempts\nSET\n    processing_status = 'review_required',\n    qualification_state = 'needs_review',\n    handoff_status = 'review_required',\n    failure_type = 'company_identity_ambiguous',\n    failure_reason = 'Multiple HubSpot Companies matched the workspace identity',\n    completed_at = NOW()\nWHERE id = (\n    SELECT id\n    FROM public.processing_attempts\n    WHERE event_id = $1\n    ORDER BY attempt_number DESC\n    LIMIT 1\n)\nRETURNING\n    id,\n    event_id,\n    attempt_number,\n    processing_status,\n    qualification_state,\n    handoff_status,\n    failure_type,\n    failure_reason,\n    completed_at;",
+        "options": {
+          "queryReplacement": "={{ [ $('Identity Resolved?').item.json.event_id ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        3584,
+        112
+      ],
+      "id": "3f078282-9fd9-4c59-ab78-fdc24fe50392",
+      "name": "Mark Ambiguous Company Identity Review",
+      "credentials": {
+        "postgres": {
+          "id": "8WCB3f8YsqEBdEhd",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate & Normalize Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate & Normalize Event": {
+      "main": [
+        [
+          {
+            "node": "Event Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Event Valid?": {
+      "main": [
+        [
+          {
+            "node": "Persist Product Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Rejected Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist Product Event": {
+      "main": [
+        [
+          {
+            "node": "New Event?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "New Event?": {
+      "main": [
+        [
+          {
+            "node": "Create Processing Attempt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Processing Attempt": {
+      "main": [
+        [
+          {
+            "node": "Load Trusted Event Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Trusted Event Context": {
+      "main": [
+        [
+          {
+            "node": "Resolve Identity Map",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Identity Map": {
+      "main": [
+        [
+          {
+            "node": "Identity Resolved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Identity Resolved?": {
+      "main": [
+        [
+          {
+            "node": "Load Account Signal State",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Lookup Contact in HubSpot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Contact in HubSpot": {
+      "main": [
+        [
+          {
+            "node": "Classify Contact Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Contact Lookup": {
+      "main": [
+        [
+          {
+            "node": "Contact Lookup Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contact Lookup Outcome": {
+      "main": [
+        [
+          {
+            "node": "Store Contact Identity Mapping",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Identity Review Required",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Ambiguous Identity Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Account Signal State": {
+      "main": [
+        [
+          {
+            "node": "Load 30-Day Product Signals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load 30-Day Product Signals": {
+      "main": [
+        [
+          {
+            "node": "Calculate Rolling Intent Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Rolling Intent Score": {
+      "main": [
+        [
+          {
+            "node": "Persist Rolling Intent State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist Rolling Intent State": {
+      "main": [
+        [
+          {
+            "node": "Load Company from HubSpot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Company from HubSpot": {
+      "main": [
+        [
+          {
+            "node": "Handoff Already Completed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate ICP Fit": {
+      "main": [
+        [
+          {
+            "node": "Calculate Data Readiness",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Data Readiness": {
+      "main": [
+        [
+          {
+            "node": "Calculate Qualification Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Qualification Decision": {
+      "main": [
+        [
+          {
+            "node": "Update HubSpot Qualification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update HubSpot Qualification": {
+      "main": [
+        [
+          {
+            "node": "Calculate Routing Target",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Routing Target": {
+      "main": [
+        [
+          {
+            "node": "Load Company Deals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Company Deals": {
+      "main": [
+        [
+          {
+            "node": "Prepare Deal Status Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update HubSpot Routing": {
+      "main": [
+        [
+          {
+            "node": "Create Sales Handoff Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Sales Handoff Task": {
+      "main": [
+        [
+          {
+            "node": "Associate Task to Company",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Associate Task to Company": {
+      "main": [
+        [
+          {
+            "node": "Associate Task to Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Associate Task to Contact": {
+      "main": [
+        [
+          {
+            "node": "Finalize HubSpot Handoff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finalize HubSpot Handoff": {
+      "main": [
+        [
+          {
+            "node": "Complete Processing Attempt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handoff Already Completed?": {
+      "main": [
+        [
+          {
+            "node": "Complete Existing Handoff Processing",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Calculate ICP Fit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Deal Status Lookup": {
+      "main": [
+        [
+          {
+            "node": "Load Deal Statuses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Complete Processing Attempt": {
+      "main": [
+        []
+      ]
+    },
+    "Load Deal Statuses": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Active Deal Blocker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Active Deal Blocker": {
+      "main": [
+        [
+          {
+            "node": "Active Deal Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Active Deal Exists?": {
+      "main": [
+        [
+          {
+            "node": "Block Handoff — Active Deal",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update HubSpot Routing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Block Handoff — Active Deal": {
+      "main": [
+        [
+          {
+            "node": "Complete Blocked Processing Attempt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Contact Identity Mapping": {
+      "main": [
+        [
+          {
+            "node": "Lookup Company in HubSpot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Company in HubSpot": {
+      "main": [
+        [
+          {
+            "node": "Classify Company Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Company Lookup": {
+      "main": [
+        [
+          {
+            "node": "Company Lookup Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Company Lookup Outcome": {
+      "main": [
+        [
+          {
+            "node": "Store Company Identity Mapping",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Company Identity Review Required",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Ambiguous Company Identity Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Company Identity Mapping": {
+      "main": [
+        [
+          {
+            "node": "Load Account Signal State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "4f0f191e-0a49-4f3d-b03c-a162edb2ebe6",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "bd5bf7ce4c647f5dd10963cf3eb9224866bf8991c10fb5ddba28c2d48295613f"
+  },
+  "nodeGroups": [],
+  "id": "3FYlYHjmpVVeZwb3",
+  "tags": []
+}

@@ -1,0 +1,10 @@
+{
+    "event_id": "evt_invalid_0001",
+    "event_type": "integration_connected",
+    "occurred_at": "2026-08-23T18:40:00Z",
+    "product_user_id": "usr_1001",
+    "email": "alex@northstar.example.com",
+    "properties": {
+        "integration_name": "Slack"
+    }
+}

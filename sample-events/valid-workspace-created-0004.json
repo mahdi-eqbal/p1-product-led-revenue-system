@@ -1,0 +1,11 @@
+{
+    "event_id": "evt_p1_0004",
+    "event_type": "workspace_created",
+    "occurred_at": "2026-08-24T07:30:00Z",
+    "product_user_id": "usr_1001",
+    "workspace_id": "ws_1001",
+    "email": "alex@northstar.example.com",
+    "properties": {
+        "workspace_name": "Northstar Labs"
+    }
+}
