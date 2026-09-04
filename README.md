@@ -2,6 +2,7 @@
 
 An event-driven Revenue Systems implementation that converts product usage and signup signals into validated, identity-resolved, qualified, and auditable sales handoffs in HubSpot.
 
+[![Release](https://img.shields.io/github/v/release/mahdi-eqbal/=tag)](https://github.com/mahdi-eqbal/p1-product-led-revenue-system/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Repository Quality Checks](https://github.com/mahdi-eqbal/p1-product-led-revenue-system/actions/workflows/repository-quality.yml/badge.svg)](https://github.com/mahdi-eqbal/p1-product-led-revenue-system/actions/workflows/repository-quality.yml)
 ![Case Study](https://img.shields.io/badge/type-independent_case_study-334155)
@@ -230,5 +231,6 @@ The published workflow export is intended to preserve architecture and business 
 ---
 
 Built by [Mahdi Eqbal](https://github.com/mahdi-eqbal) as an independent Revenue Systems / GTM Engineering implementation case study.
+
 
 
