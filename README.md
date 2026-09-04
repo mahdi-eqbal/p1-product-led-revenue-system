@@ -1,7 +1,8 @@
-# P1 — End-to-End Product-Led Revenue Qualification & Sales Handoff System
+﻿# P1 â€” End-to-End Product-Led Revenue Qualification & Sales Handoff System
 
 An event-driven Revenue Systems implementation that converts product usage and signup signals into validated, identity-resolved, qualified, and auditable sales handoffs in HubSpot.
 
+[![Repository Quality Checks](https://github.com/mahdi-eqbal/p1-product-led-revenue-system/actions/workflows/repository-quality.yml/badge.svg)](https://github.com/mahdi-eqbal/p1-product-led-revenue-system/actions/workflows/repository-quality.yml)
 ![Case Study](https://img.shields.io/badge/type-independent_case_study-334155)
 ![Status](https://img.shields.io/badge/status-implemented_and_validated-15803d)
 ![CRM](https://img.shields.io/badge/CRM-HubSpot-ff7a59)
@@ -33,7 +34,7 @@ Product-led B2B SaaS teams generate valuable signup and usage signals, but those
 - sales activity created for accounts with an active deal;
 - missing company and routing context;
 - limited visibility into failures and retries;
-- no durable audit trail explaining why sales was—or was not—asked to act.
+- no durable audit trail explaining why sales wasâ€”or was notâ€”asked to act.
 
 This system introduces a controlled orchestration and decision layer between product events and HubSpot sales execution.
 
@@ -62,21 +63,21 @@ The implementation turns a raw product event into one of several explicit outcom
 
 ```text
 Product Event
-    ↓
+    â†“
 Authentication & Validation
-    ↓
+    â†“
 Durable Event Persistence & Duplicate Detection
-    ↓
+    â†“
 Identity Resolution & Company Context
-    ↓
+    â†“
 Rolling Product Intent + ICP Fit + Data Readiness
-    ↓
+    â†“
 Qualification Decision
-    ↓
+    â†“
 Existing Handoff Guard + Active Deal Guard
-    ↓
+    â†“
 Routing + Sales Task + CRM Associations
-    ↓
+    â†“
 Handoff Completion + Audit State
 ```
 
@@ -170,25 +171,25 @@ Only an eligible record proceeds to task creation and final handoff state.
 
 Additional evidence is organized by system boundary:
 
-- [`evidence/n8n/`](evidence/n8n/) — workflow paths, decisions, guards, retries, and completion states;
-- [`evidence/crm/`](evidence/crm/) — HubSpot lifecycle and handoff records;
-- [`evidence/database/`](evidence/database/) — event, identity, qualification, and audit state;
-- [`evidence/api/`](evidence/api/) — authenticated requests and integration behavior.
+- [`evidence/n8n/`](evidence/n8n/) â€” workflow paths, decisions, guards, retries, and completion states;
+- [`evidence/crm/`](evidence/crm/) â€” HubSpot lifecycle and handoff records;
+- [`evidence/database/`](evidence/database/) â€” event, identity, qualification, and audit state;
+- [`evidence/api/`](evidence/api/) â€” authenticated requests and integration behavior.
 
 ## Repository Structure
 
 ```text
 p1-product-led-revenue-system/
-├── adrs/          # Architecture decision records
-├── architecture/  # Architecture, data flow, data model, and source-of-truth documentation
-├── docs/          # Implementation and operational documentation
-├── evidence/      # Executed workflow, CRM, database, and API evidence
-├── sample-events/ # Synthetic product and signup payloads
-├── scripts/       # Supporting implementation scripts
-├── sql/           # PostgreSQL schema and queries
-├── workflows/     # Redacted, importable n8n workflow export
-├── .gitignore
-└── README.md
+â”œâ”€â”€ adrs/          # Architecture decision records
+â”œâ”€â”€ architecture/  # Architecture, data flow, data model, and source-of-truth documentation
+â”œâ”€â”€ docs/          # Implementation and operational documentation
+â”œâ”€â”€ evidence/      # Executed workflow, CRM, database, and API evidence
+â”œâ”€â”€ sample-events/ # Synthetic product and signup payloads
+â”œâ”€â”€ scripts/       # Supporting implementation scripts
+â”œâ”€â”€ sql/           # PostgreSQL schema and queries
+â”œâ”€â”€ workflows/     # Redacted, importable n8n workflow export
+â”œâ”€â”€ .gitignore
+â””â”€â”€ README.md
 ```
 
 ## How to Review the Implementation
@@ -228,3 +229,4 @@ The published workflow export is intended to preserve architecture and business 
 ---
 
 Built by [Mahdi Eqbal](https://github.com/mahdi-eqbal) as an independent Revenue Systems / GTM Engineering implementation case study.
+
