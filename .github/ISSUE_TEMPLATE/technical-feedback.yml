@@ -1,0 +1,59 @@
+﻿name: Technical feedback
+description: Report a non-sensitive technical, architectural, or documentation issue.
+title: "[Feedback]: "
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reviewing this project. Use this form for non-sensitive technical or documentation feedback.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Feedback area
+      description: Which part of the project does this feedback concern?
+      options:
+        - Architecture and system design
+        - Workflow and automation logic
+        - Data model and operational controls
+        - Documentation
+        - Evidence and reproducibility
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: Affected file or component
+      description: Provide a file path, workflow node, document section, or component name.
+      placeholder: "Example: workflows/main-workflow.json or README.md"
+    validations:
+      required: false
+
+  - type: textarea
+    id: observation
+    attributes:
+      label: Observation
+      description: Describe the issue, ambiguity, or improvement opportunity.
+      placeholder: Explain what you observed and why it matters.
+    validations:
+      required: true
+
+  - type: textarea
+    id: recommendation
+    attributes:
+      label: Suggested improvement
+      description: Describe a proposed correction or alternative, if available.
+      placeholder: Explain the expected or preferred behavior.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Sensitive information confirmation
+      options:
+        - label: I confirm that this issue does not contain credentials, personal data, private API keys, or other sensitive information.
+          required: true
