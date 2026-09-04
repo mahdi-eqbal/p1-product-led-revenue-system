@@ -57,6 +57,9 @@ jobs:
           print(f"\nValidated {len(files)} JSON file(s).")
           PY
 
+      - name: Validate local Markdown links
+        shell: bash
+        run: python scripts/validate_markdown_links.py
       - name: Reject sensitive file types
         shell: bash
         run: |
@@ -75,5 +78,6 @@ jobs:
           fi
 
           echo "No prohibited sensitive file types detected."
+
 
 
